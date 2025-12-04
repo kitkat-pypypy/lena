@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>С ДР 🐍</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #000;
+      color: #fff;
+    }
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    #wrapper {
+      text-align: center;
+      padding: 16px;
+      box-sizing: border-box;
+      max-width: 420px;
+      width: 100%;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+    #subtitle {
+      font-size: 14px;
+      opacity: 0.8;
+      margin-bottom: 12px;
+    }
+    canvas {
+      border-radius: 12px;
+      background: #111;
+      touch-action: none;
+    }
+    #msg {
+      margin-top: 8px;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+    #qrContainer {
+      margin-top: 16px;
+    }
+    #qrTitle {
+      margin-bottom: 12px;
+      font-size: 16px;
+    }
+    .hidden {
+      display: none;
+    }
+    #qrcode {
+      margin: 0 auto;
+      width: 256px;
+      height: 256px;
+      background: #fff;
+      padding: 12px;
+      border-radius: 16px;
+    }
+    button {
+      margin-top: 12px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="wrapper">
+  <h1>С ДР 🐍</h1>
+  <div id="subtitle">Поймай 3 точечки, чтобы открыть подарок</div>
+
+  <canvas id="game" width="320" height="320"></canvas>
+  <div id="msg">Управление: свайпы по полю на телефоне или стрелки на клавиатуре</div>
+
+  <div id="qrContainer" class="hidden">
+    <div id="qrTitle">Наведи камерой — там сюрприз 🎁</div>
+    <div id="qrcode"></div>
+    <button id="restartBtn">Играть ещё раз</button>
+  </div>
+</div>
+
+<!-- Библиотека для генерации QR-кодов -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  // СЮДА ВСТАВЬ СВОЮ КАРТИНКУ
+  const IMAGE_URL = "https://drive.google.com/file/d/1tKksjpvQ6Tb2CgRzNx41PQd0P4SULlRB/view?usp=sharing";
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  const grid = 16;
+  let snake;
+  let dx;
+  let dy;
+  let food;
+  let score;
+  let loopId;
+  let showingQr = false;
+  let changingDirection = false;
+
+  function initGame() {
+    snake = [
+      { x: 160, y: 160 },
+      { x: 144, y: 160 },
+      { x: 128, y: 160 }
+    ];
+    dx = grid;
+    dy = 0;
+    score = 0;
+    food = randomFood();
+    showingQr = false;
+    changingDirection = false;
+    document.getElementById('qrContainer').classList.add('hidden');
+    document.getElementById('game').classList.remove('hidden');
+    document.getElementById('msg').classList.remove('hidden');
+    clearQr();
+    if (loopId) clearInterval(loopId);
+    loopId = setInterval(gameLoop, 130);
+  }
+
+  function randomFood() {
+    const cols = canvas.width / grid;
+    const rows = canvas.height / grid;
+    return {
+      x: Math.floor(Math.random() * cols) * grid,
+      y: Math.floor(Math.random() * rows) * grid
+    };
+  }
+
+  function clearCanvas() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Лёгкая надпись "С ДР" на фоне
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.font = 'bold 60px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('С ДР', canvas.width / 2, canvas.height / 2);
+  }
+
+  function drawFood() {
+    ctx.fillStyle = '#ffdd00';
+    ctx.beginPath();
+    ctx.arc(food.x + grid / 2, food.y + grid / 2, grid / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawSnake() {
+    for (let i = 0; i < snake.length; i++) {
+      const segment = snake[i];
+      ctx.fillStyle = i === 0 ? '#00ff88' : '#00aa55';
+      ctx.fillRect(segment.x, segment.y, grid - 1, grid - 1);
+    }
+  }
+
+  function advanceSnake() {
+  // новый предполагаемый хед
+  let head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+  // ТОР: выходим за край — появляемся с противоположной стороны
+  if (head.x < 0) {
+    head.x = canvas.width - grid;
+  } else if (head.x >= canvas.width) {
+    head.x = 0;
+  }
+
+  if (head.y < 0) {
+    head.y = canvas.height - grid;
+  } else if (head.y >= canvas.height) {
+    head.y = 0;
+  }
+
+  // добавляем новый хед
+  snake.unshift(head);
+
+  // если съели еду
+  if (head.x === food.x && head.y === food.y) {
+    score++;
+    food = randomFood();
+
+    if (score >= 3 && !showingQr) {
+      showQr();
+    }
+  } else {
+    // иначе просто двигаемся — убираем хвост
+    snake.pop();
+  }
+}
+
+  function didGameEnd() {
+  const head = snake[0];
+
+  // Столкновение с собой
+  for (let i = 1; i < snake.length; i++) {
+    if (head.x === snake[i].x && head.y === snake[i].y) {
+      return true;
+    }
+  }
+
+  return false;
+}
+  function gameLoop() {
+    if (showingQr) return;
+
+    clearCanvas();
+    drawFood();
+    advanceSnake();
+
+    if (didGameEnd()) {
+      // Небольшая пауза и рестарт
+      setTimeout(initGame, 600);
+      return;
+    }
+
+    drawSnake();
+    changingDirection = false;
+  }
+
+  // Управление с клавиатуры
+  document.addEventListener('keydown', function (event) {
+    if (changingDirection) return;
+    changingDirection = true;
+
+    const LEFT_KEY = 37;
+    const UP_KEY = 38;
+    const RIGHT_KEY = 39;
+    const DOWN_KEY = 40;
+
+    const keyPressed = event.keyCode;
+
+    const goingUp = dy === -grid;
+    const goingDown = dy === grid;
+    const goingRight = dx === grid;
+    const goingLeft = dx === -grid;
+
+    if (keyPressed === LEFT_KEY && !goingRight) {
+      dx = -grid; dy = 0;
+    }
+    if (keyPressed === UP_KEY && !goingDown) {
+      dx = 0; dy = -grid;
+    }
+    if (keyPressed === RIGHT_KEY && !goingLeft) {
+      dx = grid; dy = 0;
+    }
+    if (keyPressed === DOWN_KEY && !goingUp) {
+      dx = 0; dy = grid;
+    }
+  });
+
+  // Свайпы для мобилы
+  let touchStartX = null;
+  let touchStartY = null;
+
+  canvas.addEventListener('touchstart', function (e) {
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', function (e) {
+    if (touchStartX === null || touchStartY === null || changingDirection) return;
+
+    const touch = e.touches[0];
+    const diffX = touch.clientX - touchStartX;
+    const diffY = touch.clientY - touchStartY;
+
+    if (Math.abs(diffX) < 20 && Math.abs(diffY) < 20) return;
+
+    changingDirection = true;
+
+    const goingUp = dy === -grid;
+    const goingDown = dy === grid;
+    const goingRight = dx === grid;
+    const goingLeft = dx === -grid;
+
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+      // горизонтальный свайп
+      if (diffX > 0 && !goingLeft) {
+        dx = grid; dy = 0;
+      } else if (diffX < 0 && !goingRight) {
+        dx = -grid; dy = 0;
+      }
+    } else {
+      // вертикальный свайп
+      if (diffY > 0 && !goingUp) {
+        dx = 0; dy = grid;
+      } else if (diffY < 0 && !goingDown) {
+        dx = 0; dy = -grid;
+      }
+    }
+
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+
+  function showQr() {
+    showingQr = true;
+    document.getElementById('game').classList.add('hidden');
+    document.getElementById('msg').classList.add('hidden');
+    document.getElementById('qrContainer').classList.remove('hidden');
+
+    const qrDiv = document.getElementById('qrcode');
+    clearQr();
+
+    new QRCode(qrDiv, {
+      text: IMAGE_URL,
+      width: 256,
+      height: 256,
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  }
+
+  function clearQr() {
+    const qrDiv = document.getElementById('qrcode');
+    qrDiv.innerHTML = "";
+  }
+
+  document.getElementById('restartBtn').addEventListener('click', function () {
+    initGame();
+  });
+
+  // Старт
+  initGame();
+</script>
+</body>
+</html>
